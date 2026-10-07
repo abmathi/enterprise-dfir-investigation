@@ -1372,3 +1372,134 @@ A broader response should include:
 - and examining authentication activity for additional affected systems.
 
 The investigation demonstrates that removing malware from one endpoint would not be sufficient once an attacker has obtained reusable credentials and established multiple access paths.
+
+## Evidence Limitations
+
+This investigation was reconstructed from a preserved set of forensic artifacts rather than from continuous enterprise telemetry. As a result, some attacker actions could be established with high confidence while others could only be partially supported.
+
+The investigation therefore distinguishes between:
+
+- **directly observed evidence** — artifacts showing the activity itself,
+- **correlated findings** — conclusions supported by multiple related artifacts,
+- **scenario context** — activity described by the exercise but not independently proven by the preserved evidence.
+
+Several limitations were especially important.
+
+### Stage 1
+
+The Linux evidence strongly supported WordPress compromise, webshell activity, host command execution, reverse-shell behavior, root-level access, reconnaissance, and systemd persistence.
+
+However, not every transition in the attack chain had a dedicated artifact preserved in the repository. Where necessary, conclusions were limited to the strongest available evidence.
+
+### Stage 2
+
+Executable metadata and Prefetch evidence supported masquerading and execution of the suspicious `Coreinfo64.exe` file.
+
+PowerShell transcript evidence supported ProcDump activity targeting `lsass.exe`.
+
+The investigation did not attempt to reconstruct the exact credential material recovered from the LSASS dump because the preserved evidence did not support that level of detail.
+
+### Stage 3
+
+Volatile-memory analysis provided strong evidence of suspicious process ancestry, executable memory inside `notepad.exe`, Meterpreter-like shellcode, and an established RDP connection.
+
+Memory artifacts can be highly transient, and the preserved image represents only the state of the system at the time of acquisition.
+
+### Stage 4
+
+The final stage had the smallest preserved evidence set.
+
+The available artifacts supported:
+
+- RDP access to `SRV-CRM-01`,
+- use of `DECEPT\matthew.collins`,
+- and the presence of CRM-related data artifacts.
+
+The preserved evidence did not independently establish the full collection, archive staging, exfiltration, log-deletion, or shadow-copy-deletion sequence described by the original scenario. Those actions are therefore not presented as confirmed findings.
+
+### Analytical Standard
+
+Throughout the project, absence of evidence was not treated as evidence that an action did or did not occur.
+
+Where the available artifacts could not support a definitive conclusion, the uncertainty was documented rather than filled with assumptions.
+
+---
+
+## Skills Demonstrated
+
+This investigation required combining host, application, disk, and volatile-memory evidence to reconstruct attacker behavior across Linux and Windows systems.
+
+### Digital Forensics and Incident Response
+
+- Multi-host intrusion reconstruction
+- Attack timeline development
+- Evidence correlation
+- Artifact validation
+- Evidence-scoped reporting
+- IOC identification
+- Incident documentation
+
+### Linux Investigation
+
+- Apache log analysis
+- WordPress compromise investigation
+- Linux `auditd` analysis
+- Web-to-host execution correlation
+- Reverse-shell analysis
+- Shell and history review
+- systemd persistence analysis
+- Internal reconnaissance analysis
+
+### Windows Forensics
+
+- RDP activity analysis
+- Scheduled-task investigation
+- Executable metadata analysis
+- Masquerading detection
+- Windows Prefetch analysis
+- PowerShell transcript analysis
+- LSASS credential-dumping investigation
+- PsExec lateral-movement analysis
+
+### Memory Forensics
+
+- Volatility
+- Process-tree reconstruction
+- Command-line analysis
+- Suspicious DLL investigation
+- `malfind` analysis
+- Process-injection identification
+- Shellcode analysis
+- Network-connection reconstruction
+
+### Detection and Threat Analysis
+
+- Living-off-the-land and dual-use tool analysis
+- Parent-child process correlation
+- Credential-access detection
+- Lateral-movement analysis
+- Persistence detection
+- MITRE ATT&CK mapping
+- Behavioral detection development
+
+### Tools and Data Sources
+
+- Volatility
+- Linux Audit Framework (`auditd`)
+- Apache access logs
+- Windows forensic artifacts
+- PowerShell transcripts
+- Prefetch
+- Filesystem metadata
+- Process and network memory artifacts
+
+### Core Analytical Principles
+
+The project emphasized several practices that are central to defensive security work:
+
+- correlate evidence across multiple sources,
+- verify execution rather than assuming it from file presence,
+- distinguish legitimate tools from malicious behavior based on context,
+- avoid overstating what telemetry can prove,
+- and preserve uncertainty when the evidence is incomplete.
+
