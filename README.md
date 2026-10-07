@@ -789,3 +789,80 @@ The available evidence supports the following findings:
 4. The preserved evidence for this stage was insufficient to independently confirm the full collection and exfiltration sequence described by the scenario.
 
 This final stage demonstrates an important forensic principle: conclusions should be limited to what the available evidence can actually support.
+
+## Cross-Host Attack Timeline
+
+The investigation revealed a multi-stage intrusion that moved from an internet-facing Linux application into the internal Windows environment.
+
+The timeline below summarizes the major attacker actions established by the preserved evidence.
+
+| Phase | Host | Activity | Evidence |
+| --- | --- | --- | --- |
+| Initial Access | DeceptiPot | Repeated authentication attempts targeted the WordPress administrative interface | Apache access logs |
+| Application Compromise | DeceptiPot | Administrative access was followed by PHP/webshell activity | WordPress / web-server artifacts |
+| Execution | DeceptiPot | Attacker-controlled web requests were correlated with host command execution | Apache logs + `auditd` |
+| Command and Control | DeceptiPot | `socat` was used to establish interactive remote access | Linux process / audit evidence |
+| Privilege Escalation | DeceptiPot | Exposed credential material enabled transition to a root-level context | SSH key and shell artifacts |
+| Discovery | DeceptiPot | Internal network reconnaissance was performed from the compromised host | Shell / command-history evidence |
+| Persistence | DeceptiPot | A malicious systemd service established durable execution | systemd configuration |
+| Lateral Movement | SRV-IT-QA | Compromised domain credentials were used for RDP access | Windows forensic artifacts |
+| Execution | SRV-IT-QA | Scheduled execution launched attacker-controlled tooling | Scheduled-task artifacts |
+| Defense Evasion | SRV-IT-QA | `Coreinfo64.exe` masqueraded as a trusted administrative utility | Executable metadata |
+| Execution Validation | SRV-IT-QA | Prefetch evidence confirmed the masqueraded executable ran | Windows Prefetch |
+| Credential Access | SRV-IT-QA | ProcDump targeted `lsass.exe` to create a credential dump | PowerShell transcript |
+| Lateral Movement | SRV-IT-QA | PsExec activity supported movement to another Windows host | Windows process artifacts |
+| Remote Execution | SRV-DMZ-GW | PsExec-related execution led into a suspicious process chain | Volatile memory |
+| Execution | SRV-DMZ-GW | `rundll32.exe` loaded `MicrosoftUpdate.dll` | Memory process analysis |
+| Defense Evasion | SRV-DMZ-GW | Update-themed executables were used to resemble legitimate software | Process / command-line evidence |
+| Process Injection | SRV-DMZ-GW | Executable injected memory was identified inside `notepad.exe` | Volatility `malfind` |
+| Post-Exploitation | SRV-DMZ-GW | Injected memory was consistent with Meterpreter-related shellcode | Memory analysis |
+| Lateral Movement | SRV-DMZ-GW | An established RDP connection targeted another internal Windows host | Volatility network analysis |
+| Remote Access | SRV-CRM-01 | `DECEPT\matthew.collins` was used for RDP access | Preserved RDP evidence |
+| Data Access | SRV-CRM-01 | CRM-related business data artifacts were identified on the compromised system | Disk-forensic evidence |
+
+### Attack Progression
+
+At a high level, the intrusion progressed as follows:
+
+```text
+Internet
+   │
+   ▼
+DeceptiPot
+WordPress compromise
+   │
+   ├─ PHP webshell
+   ├─ host command execution
+   ├─ socat reverse shell
+   ├─ root access
+   └─ systemd persistence
+   │
+   ▼
+SRV-IT-QA
+RDP with compromised credentials
+   │
+   ├─ scheduled-task abuse
+   ├─ executable masquerading
+   ├─ LSASS credential dumping
+   └─ PsExec
+   │
+   ▼
+SRV-DMZ-GW
+Memory-resident post-exploitation
+   │
+   ├─ rundll32 / DLL execution
+   ├─ masqueraded update payloads
+   ├─ process injection
+   ├─ Meterpreter-like shellcode
+   └─ outbound RDP
+   │
+   ▼
+SRV-CRM-01
+RDP access
+   │
+   └─ access to CRM-related data
+```
+
+The attack demonstrates how an initial compromise of an internet-facing application can develop into an enterprise-wide incident once the attacker obtains privileged credentials and begins using legitimate administrative mechanisms for lateral movement.
+
+Several stages relied on trusted tools or normal operating-system functionality—including RDP, scheduled tasks, ProcDump, PsExec, `rundll32.exe`, and systemd—which reinforced the importance of analyzing behavior and context rather than relying only on binary names or individual events.
