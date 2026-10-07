@@ -319,6 +319,10 @@ SRV-IT-QA
 
 Rather than exploiting a remote software vulnerability, the attacker was able to access the Windows server using legitimate authentication mechanisms and compromised credentials.
 
+![RDP access using compromised domain credentials](evidence/02-credential-access/01-rdp-access.png)
+
+*Figure 7 — Forensic evidence showing interactive RDP access to `SRV-IT-QA` using the compromised domain account `DECEPT\emily.ross`.*
+
 ### Scheduled Task Abuse
 
 Investigation of activity on `SRV-IT-QA` identified suspicious use of Windows scheduled tasks.
@@ -362,6 +366,10 @@ The mismatch between the visible filename and the executable's embedded metadata
 This is consistent with executable masquerading, where an attacker attempts to reduce suspicion by assigning malicious or unauthorized tooling a familiar name.
 
 The finding illustrates why executable names alone should not be considered sufficient evidence of software identity.
+
+![Masqueraded executable metadata](evidence/02-credential-access/02-masqueraded-binary.png)
+
+*Figure 8 — The file named `Coreinfo64.exe` contained embedded metadata identifying it as ApacheBench (`ab.exe`), indicating executable masquerading.*
 
 ### Execution Validation with Prefetch
 
@@ -424,6 +432,10 @@ The presence of the ProcDump command and associated dump activity supported the 
 
 This stage was especially significant because the following activity involved movement to another Windows system, indicating that the attacker continued expanding access within the environment.
 
+![LSASS credential dumping with ProcDump](evidence/02-credential-access/03-lsass-credential-dumping.png)
+
+*Figure 9 — PowerShell transcript evidence showing ProcDump targeting `lsass.exe`, consistent with credential-dumping activity.*
+
 ### Credential Dump Retrieval
 
 Artifacts indicated that the resulting credential dump was subsequently accessed or retrieved for further use.
@@ -465,6 +477,10 @@ Movement toward SRV-DMZ-GW
 ```
 
 As with other dual-use administrative tools observed during the investigation, PsExec was not classified as malicious solely because of its presence. Its significance was established through its timing, execution context, and relationship to the larger intrusion sequence.
+
+![PsExec lateral movement](evidence/02-credential-access/04-psexec-lateral-movement.png)
+
+*Figure 10 — Evidence of PsExec activity used to continue lateral movement from `SRV-IT-QA` toward another internal Windows system.*
 
 ### Stage 2 Findings
 
