@@ -1083,3 +1083,292 @@ ATT&CK mappings describe observed attacker behavior, not the maliciousness of a 
 For example, PowerShell, PsExec, `rundll32.exe`, RDP, and scheduled tasks all have legitimate administrative purposes. They map to ATT&CK techniques in this investigation because of how they were used within the reconstructed intrusion chain.
 
 Similarly, only techniques supported by the retained forensic evidence are included. Behaviors described by the original scenario but not independently established by the preserved artifacts were excluded from the mapping.
+
+## Detection Opportunities
+
+The reconstructed attack chain exposed several opportunities where earlier detection could have reduced attacker dwell time or interrupted lateral movement.
+
+### Internet-Facing Authentication Abuse
+
+Repeated WordPress authentication attempts preceded the initial compromise.
+
+Potential detection opportunities include:
+
+- Alerting on unusually high authentication-failure counts from a single source.
+- Detecting rapid authentication attempts against administrative endpoints.
+- Correlating repeated failures with a subsequent successful administrative login.
+- Monitoring unexpected administrative activity immediately following authentication anomalies.
+
+A successful login after a concentrated burst of failures should receive greater investigative priority than either event in isolation.
+
+### Web Application to Operating-System Execution
+
+One of the strongest detection opportunities was the transition from HTTP activity to host command execution.
+
+Potential detections include:
+
+- Web-server processes spawning shell interpreters.
+- PHP or web-service processes launching utilities such as `/bin/sh`, `/bin/bash`, `curl`, `wget`, or networking tools.
+- Correlation between suspicious HTTP parameters and subsequent `execve` activity.
+- Unexpected file modifications within WordPress themes, plugins, or other executable PHP locations.
+
+Cross-source correlation between web logs and endpoint telemetry can distinguish unsuccessful exploitation attempts from commands that actually execute on the host.
+
+### Reverse-Shell Activity
+
+The use of `socat` provided an opportunity for behavioral detection.
+
+Useful indicators include:
+
+- `socat` executed by a web-service account.
+- `socat` launched shortly after webshell activity.
+- Unexpected outbound connections from an internet-facing application server.
+- Shell or networking utilities spawned by web-server processes.
+
+Because `socat` is legitimate software, detection should focus on execution context rather than the binary name alone.
+
+### Linux Persistence
+
+The malicious systemd service created a durable foothold.
+
+Potential monitoring includes:
+
+- Creation or modification of files under `/etc/systemd/system/`.
+- Execution of `systemctl enable` or daemon reload operations from unusual user contexts.
+- Services referencing binaries from atypical paths.
+- Trusted-looking service names whose executable paths or hashes do not match approved software.
+
+File-integrity monitoring of systemd configuration directories could provide an additional control.
+
+### Valid-Account RDP Activity
+
+Compromised credentials enabled the attacker to enter the Windows environment through legitimate RDP.
+
+Detection opportunities include:
+
+- RDP logons from unusual source systems.
+- Accounts authenticating to servers they do not normally access.
+- First-seen source/destination account relationships.
+- Remote logons occurring shortly after credential-access activity elsewhere in the environment.
+- Privileged or sensitive accounts establishing sessions outside expected administrative patterns.
+
+Valid authentication should not automatically be treated as benign when the surrounding context is anomalous.
+
+### Scheduled-Task Abuse
+
+Scheduled tasks provided attacker-controlled execution on `SRV-IT-QA`.
+
+Potential detections include:
+
+- Creation of new scheduled tasks from interactive or scripting processes.
+- Tasks executing programs from user-writable directories.
+- Tasks referencing `%TEMP%`, user profile directories, or other unusual execution locations.
+- Administrative-looking task names whose executable paths do not match known software.
+
+### Executable Masquerading
+
+`Coreinfo64.exe` demonstrated that a trusted-looking filename may not represent the actual program.
+
+Possible detection approaches include:
+
+- Comparing executable filenames against embedded metadata.
+- Validating digital signatures for trusted administrative utilities.
+- Monitoring known utility names executing from unexpected directories.
+- Comparing hashes against approved software inventories.
+
+The combination of a trusted-looking filename, unexpected path, and conflicting metadata should receive increased scrutiny.
+
+### LSASS Credential Dumping
+
+ProcDump activity against `lsass.exe` was a high-value detection opportunity.
+
+Potential controls include:
+
+- Monitoring processes requesting access to LSASS.
+- Alerting on ProcDump commands referencing `lsass.exe`.
+- Detecting creation of dump files associated with LSASS.
+- Correlating credential-dumping activity with subsequent remote authentication.
+
+Credential-access detections should be treated as potential precursors to lateral movement rather than isolated endpoint alerts.
+
+### PsExec Remote Execution
+
+PsExec provided another strong behavioral detection point.
+
+Useful indicators include:
+
+- Creation or execution of `PSEXESVC.exe`.
+- Administrative-share activity followed by remote service creation.
+- PsExec execution from systems or accounts that do not normally use it.
+- PsExec activity immediately following credential dumping.
+
+### Rundll32 Abuse
+
+`rundll32.exe` executed the suspicious `MicrosoftUpdate.dll`.
+
+Detection opportunities include:
+
+- `rundll32.exe` loading DLLs from user-writable or unusual locations.
+- Newly created DLLs being executed shortly after arrival.
+- Parent-child relationships inconsistent with normal software behavior.
+- DLL names suggesting trusted vendors without matching signatures or metadata.
+
+### Process Injection
+
+Memory analysis identified executable injected content inside `notepad.exe`.
+
+Endpoint detection opportunities include:
+
+- Suspicious cross-process memory allocation or modification.
+- Executable memory regions with write and execute permissions.
+- Unexpected processes spawning shells or scripting interpreters.
+- Normally benign applications exhibiting network or command-execution behavior.
+
+A process such as `notepad.exe` spawning `cmd.exe` or PowerShell would be highly unusual in most enterprise environments.
+
+### Lateral RDP Connections
+
+The established RDP connection identified in memory demonstrated another opportunity for network-based correlation.
+
+Potential detections include:
+
+- New RDP connections between servers that do not normally communicate.
+- Workstation-to-server or server-to-server RDP outside approved administrative paths.
+- RDP activity originating from a host already associated with confirmed malicious behavior.
+
+---
+
+## Remediation Recommendations
+
+The following controls would reduce the likelihood or impact of the attack paths observed during the investigation.
+
+### Harden Internet-Facing Applications
+
+- Require multifactor authentication for administrative WordPress accounts where supported.
+- Enforce strong password and lockout policies.
+- Restrict administrative interfaces by network location when operationally feasible.
+- Keep WordPress core, plugins, themes, and the underlying operating system patched.
+- Monitor changes to executable web content.
+- Remove unnecessary administrative accounts and components.
+
+### Reduce Web-Server Privileges
+
+Web applications should run with only the privileges required for their function.
+
+Recommended controls include:
+
+- Restricting filesystem write access for the web-service account.
+- Preventing application processes from modifying unnecessary executable content.
+- Limiting access to shell and networking utilities where operationally practical.
+- Applying application isolation and mandatory-access controls where supported.
+
+### Protect Credential Material
+
+The exposed SSH private key and subsequent Windows credential dumping demonstrate the importance of credential protection.
+
+Recommended controls include:
+
+- Remove unused or exposed private keys.
+- Protect private keys with appropriate permissions and passphrases.
+- Rotate credentials after suspected compromise.
+- Avoid storing reusable privileged credentials on internet-facing hosts.
+- Use dedicated administrative accounts rather than normal user identities for privileged operations.
+
+### Harden Windows Credential Protection
+
+To reduce credential-dumping risk:
+
+- Enable appropriate Windows protections for LSASS.
+- Limit local administrative access.
+- Restrict use of credential-dumping-capable utilities.
+- Monitor access to sensitive authentication processes.
+- Apply privileged-access management practices to administrative accounts.
+
+### Restrict Lateral Movement
+
+Network and identity controls should reduce the ability of one compromised system to become a pathway through the environment.
+
+Recommended measures include:
+
+- Segment internet-facing servers from internal administrative networks.
+- Restrict RDP and SMB to approved management paths.
+- Limit administrative shares where they are not required.
+- Use host-based firewall rules to reduce unnecessary east-west connectivity.
+- Prevent ordinary user accounts from authenticating interactively to sensitive servers when not required.
+
+### Control Administrative Tools
+
+Utilities such as PowerShell, ProcDump, PsExec, `rundll32.exe`, and `socat` should not automatically be blocked solely because they can be abused.
+
+Instead:
+
+- Restrict their use to accounts and systems with legitimate operational requirements.
+- Log command-line arguments and process relationships.
+- Use application control where appropriate.
+- Establish behavioral baselines for administrative tooling.
+- Investigate executions that occur from unusual paths or under unusual parent processes.
+
+### Strengthen Persistence Monitoring
+
+Monitor operating-system locations commonly abused for persistence:
+
+**Linux**
+- systemd service directories
+- cron configuration
+- shell startup files
+- SSH `authorized_keys`
+
+**Windows**
+- scheduled tasks
+- services
+- startup locations
+- autorun registry keys
+
+Changes in these locations should be correlated with the user, process, and preceding activity that created them.
+
+### Improve Endpoint Visibility
+
+The investigation relied heavily on process, command-line, audit, and memory evidence.
+
+Enterprise endpoints should provide sufficient telemetry to capture:
+
+- process creation
+- parent-child relationships
+- command-line arguments
+- file creation
+- authentication events
+- scheduled-task changes
+- service creation
+- network connections
+- PowerShell activity
+
+Centralizing this telemetry in a SIEM improves cross-host correlation.
+
+### Preserve Forensic Evidence
+
+Because some attacker behavior existed primarily in volatile memory, incident-response procedures should include memory acquisition when in-memory execution or process injection is suspected.
+
+Preservation priorities should include:
+
+1. volatile memory,
+2. active network state,
+3. relevant logs,
+4. disk artifacts,
+5. affected credentials and account history.
+
+Collecting volatile evidence early can preserve information that may disappear after process termination or system shutdown.
+
+### Incident-Wide Credential Reset
+
+Because credential access and repeated valid-account usage occurred across multiple stages, remediation should not be limited to individual infected hosts.
+
+A broader response should include:
+
+- identifying potentially exposed credentials,
+- forcing resets where appropriate,
+- revoking active sessions,
+- rotating service-account credentials and keys,
+- reviewing privileged-group membership,
+- and examining authentication activity for additional affected systems.
+
+The investigation demonstrates that removing malware from one endpoint would not be sufficient once an attacker has obtained reusable credentials and established multiple access paths.
