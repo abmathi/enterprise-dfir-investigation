@@ -87,21 +87,9 @@ The intrusion progressed from compromise of an internet-facing Linux web applica
 
 Volatile-memory analysis on `SRV-DMZ-GW` later identified suspicious DLL execution, process injection, Meterpreter-like shellcode, and an established RDP connection leading deeper into the environment. The final preserved evidence showed access to `SRV-CRM-01`, a system containing sensitive CRM-related data.
 
-```text
-Internet
-   ↓
-DeceptiPot
-WordPress → Webshell → Reverse Shell → Root → Persistence
-   ↓
-SRV-IT-QA
-RDP → Masquerading → LSASS Dump → PsExec
-   ↓
-SRV-DMZ-GW
-DLL Execution → Process Injection → Meterpreter → RDP
-   ↓
-SRV-CRM-01
-RDP → CRM Data Access
-```
+![Enterprise intrusion attack path](diagrams/attack-path.png)
+
+*Figure — High-level progression of the intrusion from the internet-facing WordPress host through the internal Windows environment.*
 
 The sections below examine each stage using the preserved forensic evidence.
 
