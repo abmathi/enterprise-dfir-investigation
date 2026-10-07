@@ -866,3 +866,162 @@ RDP access
 The attack demonstrates how an initial compromise of an internet-facing application can develop into an enterprise-wide incident once the attacker obtains privileged credentials and begins using legitimate administrative mechanisms for lateral movement.
 
 Several stages relied on trusted tools or normal operating-system functionality—including RDP, scheduled tasks, ProcDump, PsExec, `rundll32.exe`, and systemd—which reinforced the importance of analyzing behavior and context rather than relying only on binary names or individual events.
+
+## Key Findings
+
+The investigation identified a progression from an internet-facing application compromise to credential theft, multi-host lateral movement, memory-resident post-exploitation activity, and access to sensitive internal systems.
+
+### 1. Internet-Facing Application Compromise
+
+The initial Linux host was compromised through the exposed WordPress application. Administrative access was followed by webshell activity that enabled operating-system command execution.
+
+Apache and `auditd` evidence provided independent visibility into both the application-layer requests and the resulting host-level processes.
+
+### 2. Interactive Linux Access and Persistence
+
+Following webshell execution, `socat` was used to establish interactive remote access.
+
+Credential material discovered on the host enabled access to a root-level context, after which the attacker performed internal reconnaissance and established persistence through a malicious systemd service.
+
+### 3. Valid Credentials Enabled Windows Lateral Movement
+
+The attacker transitioned from the Linux environment into the Windows domain using legitimate authentication mechanisms and compromised credentials.
+
+RDP access to `SRV-IT-QA` demonstrated that valid accounts could be used to move through the environment without requiring exploitation of another externally exposed vulnerability.
+
+### 4. Trusted-Looking Executables Were Used for Masquerading
+
+A file named:
+
+```text
+C:\Users\emily.ross\Documents\Coreinfo64.exe
+```
+
+did not match its embedded metadata.
+
+The executable identified itself internally as:
+
+```text
+FileDescription: ApacheBench command line utility
+ProductName: Apache HTTP Server
+OriginalFilename: ab.exe
+```
+
+Windows Prefetch artifacts subsequently confirmed that the masqueraded executable had run.
+
+### 5. LSASS Was Targeted for Credential Access
+
+PowerShell transcript evidence showed Sysinternals ProcDump being used against `lsass.exe`.
+
+The creation of an LSASS memory dump indicated an attempt to obtain additional Windows authentication material for continued access and lateral movement.
+
+### 6. Legitimate Administrative Tools Supported Lateral Movement
+
+PsExec activity connected the credential-access stage on `SRV-IT-QA` with subsequent execution on `SRV-DMZ-GW`.
+
+The investigation repeatedly showed that legitimate tools and operating-system functionality—including RDP, ProcDump, PsExec, scheduled tasks, `rundll32.exe`, and systemd—can become part of a malicious attack chain when used in the wrong context.
+
+### 7. Memory Forensics Exposed In-Memory Post-Exploitation Activity
+
+Volatile-memory analysis on `SRV-DMZ-GW` identified:
+
+- a suspicious PsExec-related process chain,
+- DLL execution through `rundll32.exe`,
+- masqueraded update-themed payloads,
+- executable memory inside `notepad.exe`,
+- Meterpreter-like shellcode,
+- and continued command execution from the suspicious process context.
+
+These findings demonstrated the value of volatile-memory analysis when attacker activity is not fully represented by persistent files on disk.
+
+### 8. The Compromised Host Was Used for Continued Lateral Movement
+
+Volatility network analysis identified an established connection from:
+
+```text
+172.16.8.15:49750
+```
+
+to:
+
+```text
+172.16.2.9:3389
+```
+
+associated with `powershell.exe`.
+
+The connection provided evidence that `SRV-DMZ-GW` was being used as another staging point for movement deeper into the Windows environment.
+
+### 9. Sensitive CRM Infrastructure Was Reached
+
+The final preserved stage showed RDP access to `SRV-CRM-01` using:
+
+```text
+DECEPT\matthew.collins
+```
+
+from:
+
+```text
+172.16.8.93
+```
+
+Forensic analysis also identified CRM-related business data artifacts on the server.
+
+The preserved evidence established access to the sensitive system but did not independently prove the complete collection and exfiltration sequence described by the training scenario.
+
+---
+
+## Indicators of Compromise
+
+The following indicators were identified during the investigation. They are specific to the simulated environment and are included to summarize artifacts that helped connect activity across hosts.
+
+### Accounts
+
+| Indicator | Context |
+| --- | --- |
+| `DECEPT\emily.ross` | Domain account associated with RDP access to `SRV-IT-QA` |
+| `DECEPT\matthew.collins` | Domain account associated with RDP access to `SRV-CRM-01` |
+
+### Files and Payloads
+
+| Indicator | Context |
+| --- | --- |
+| `Coreinfo64.exe` | Masqueraded executable identified on `SRV-IT-QA` |
+| `MicrosoftUpdate.dll` | Suspicious DLL executed through `rundll32.exe` on `SRV-DMZ-GW` |
+| `windows-update.exe` | Update-themed executable observed in the suspicious memory process chain |
+| `security-update.exe` | Additional update-themed executable observed during post-exploitation |
+
+### Processes and Utilities
+
+| Indicator | Context |
+| --- | --- |
+| `socat` | Used during interactive Linux reverse-shell activity |
+| `ProcDump` | Used to create an LSASS memory dump |
+| `lsass.exe` | Target of credential-dumping activity |
+| `PsExec` / `PSEXESVC.exe` | Used during Windows lateral movement |
+| `rundll32.exe` | Used to execute the suspicious DLL |
+| `notepad.exe` | Contained suspicious executable memory consistent with process injection |
+| `powershell.exe` | Appeared throughout post-compromise execution and lateral movement |
+
+### Network Indicators
+
+| Indicator | Context |
+| --- | --- |
+| `172.16.8.15:49750` | Source side of established RDP connection identified in memory |
+| `172.16.2.9:3389` | Destination of established RDP connection identified in memory |
+| `172.16.8.93` | Source associated with later RDP access to `SRV-CRM-01` |
+| TCP/3389 | RDP used during multiple lateral-movement stages |
+
+### Persistence Artifacts
+
+| Indicator | Context |
+| --- | --- |
+| Malicious systemd service | Persistent execution established on the initial Linux host |
+| Scheduled-task activity | Used for attacker-controlled execution on `SRV-IT-QA` |
+
+### Analyst Note
+
+These indicators should not be treated as universally malicious outside the context of this investigation.
+
+Utilities such as `socat`, ProcDump, PsExec, PowerShell, and `rundll32.exe` all have legitimate administrative uses. Their significance in this case came from their relationships to compromised accounts, suspicious parent-child process chains, credential access, persistence, and lateral movement.
