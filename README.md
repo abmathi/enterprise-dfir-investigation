@@ -535,6 +535,10 @@ The relationship between these processes provided a high-level view of how attac
 
 Rather than treating each executable independently, the investigation used parent-child process relationships to reconstruct the likely execution sequence.
 
+![Suspicious process tree reconstructed from memory](evidence/03-memory-forensics/01-process-tree.png)
+
+*Figure 11 — Volatile-memory process analysis showing the suspicious execution chain beginning with PsExec activity and continuing through `rundll32.exe`, update-themed payloads, `notepad.exe`, and command-line processes.*
+
 ### Suspicious DLL Execution
 
 Within the process tree, `rundll32.exe` was observed loading:
@@ -594,6 +598,10 @@ Injected executable memory
 Potential attacker-controlled execution context
 ```
 
+![Injected executable memory in notepad.exe](evidence/03-memory-forensics/02-process-injection.png)
+
+*Figure 12 — Volatility `malfind` output identifying suspicious executable memory inside `notepad.exe`, consistent with injected shellcode.*
+
 ### Meterpreter Identification
 
 The suspicious memory content was consistent with Meterpreter-related shellcode.
@@ -642,6 +650,10 @@ PID 464
 Because TCP/3389 is associated with Remote Desktop Protocol, the connection indicated movement from `SRV-DMZ-GW` toward another internal Windows host.
 
 This provided an important link between the memory-resident activity and the next stage of the intrusion.
+
+![Established RDP connection identified in memory](evidence/03-memory-forensics/03-rdp-lateral-movement.png)
+
+*Figure 13 — Volatility network analysis showing an established connection from the compromised host to TCP/3389 on another internal system, supporting continued lateral movement.*
 
 ### Continued Lateral Movement
 
