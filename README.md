@@ -700,22 +700,84 @@ By the end of Stage 3, memory forensics had exposed attacker activity that would
 
 ## Stage 4 — CRM Server Compromise
 
+The final preserved stage of the investigation focused on `SRV-CRM-01`, another internal Windows system reached later in the intrusion.
+
+Compared with the earlier stages, the retained evidence for this host was more limited. The available artifacts nevertheless supported two important findings: remote access to the system and the presence of CRM-related data artifacts that were relevant to the attacker's apparent collection objectives.
+
 ### RDP Access
+
+Evidence showed an RDP session associated with the domain account:
+
+```text
+DECEPT\matthew.collins
+```
+
+The source of the connection was:
+
+```text
+172.16.8.93
+```
+
+This indicated continued movement through the Windows environment using valid domain credentials.
+
+The connection represented another step in the attacker's lateral movement:
+
+```text
+Previously compromised Windows host
+        ↓
+Valid domain credentials
+        ↓
+RDP
+        ↓
+SRV-CRM-01
+```
+
+As with the earlier RDP activity, the use of legitimate authentication mechanisms meant that the connection could resemble normal administrative behavior without the surrounding incident context.
+
 ### CRM Data Artifacts
+
+Forensic examination of the system identified CRM-related data artifacts containing customer or business information.
+
+The presence of these artifacts was significant because earlier stages of the intrusion had already demonstrated:
+
+- credential access,
+- lateral movement,
+- internal reconnaissance,
+- and post-compromise execution.
+
+The CRM artifacts therefore represented data of potential value to an attacker operating inside the environment.
+
+The preserved evidence supports the conclusion that the attacker reached a system containing sensitive CRM data.
+
 ### Evidence Limitations
 
-## Cross-Host Attack Timeline
+The training scenario associated this stage with additional activity, including collection, archive staging, exfiltration, and anti-forensic actions.
 
-## Key Findings
+However, the preserved evidence available for this project does not independently establish all of those actions.
 
-## Indicators of Compromise
+The retained artifacts support:
 
-## MITRE ATT&CK Mapping
+- RDP access to `SRV-CRM-01`
+- use of the `DECEPT\matthew.collins` account
+- access to a system containing CRM-related data artifacts
 
-## Detection Opportunities
+The available evidence does **not** provide enough independent support to make definitive claims about:
 
-## Remediation Recommendations
+- the exact files collected,
+- the full contents of any archive,
+- successful external exfiltration,
+- deletion of Windows event logs,
+- or deletion of Volume Shadow Copies.
 
-## Evidence Limitations
+Those actions are therefore not presented as confirmed findings in this case study.
 
-## Skills Demonstrated
+### Stage 4 Findings
+
+The available evidence supports the following findings:
+
+1. The attacker continued lateral movement to `SRV-CRM-01`.
+2. The RDP activity used the domain account `DECEPT\matthew.collins`.
+3. The system contained CRM-related data artifacts of potential value to the attacker.
+4. The preserved evidence for this stage was insufficient to independently confirm the full collection and exfiltration sequence described by the scenario.
+
+This final stage demonstrates an important forensic principle: conclusions should be limited to what the available evidence can actually support.
