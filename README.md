@@ -107,7 +107,9 @@ Successful administrative access
 
 The authentication activity alone did not prove host compromise. Subsequent WordPress and operating-system evidence was required to establish that the attacker progressed beyond account access.
 
-> **Evidence:** Apache access-log activity showing repeated WordPress authentication attempts.
+![Repeated WordPress authentication activity](evidence/01-initial-access/01-wordpress-bruteforce.png)
+
+*Figure 1 — Apache access-log evidence showing repeated authentication activity against the WordPress application.*
 
 ### Webshell Deployment
 
@@ -131,7 +133,9 @@ Operating-system command execution
 
 Web-request evidence was correlated with Linux audit records to validate that attacker-controlled requests resulted in processes being launched on the server.
 
-> **Evidence:** WordPress administrative activity and the corresponding PHP/webshell artifact.
+![WordPress webshell activity](evidence/01-initial-access/02-webshell-activity.png)
+
+*Figure 2 — WordPress activity associated with the deployment and use of the PHP webshell.*
 
 ### Web-to-Host Execution Correlation
 
@@ -155,7 +159,9 @@ Host command execution
 
 This distinction was important because a malicious request alone does not establish successful command execution.
 
-> **Evidence:** Matching web request and `auditd` execution records.
+![Web request correlated with host execution](evidence/01-initial-access/03-web-to-host-execution.png)
+
+*Figure 3 — Web and Linux audit evidence correlating attacker-controlled application activity with host-level command execution.*
 
 ### Reverse Shell Establishment
 
@@ -175,7 +181,9 @@ Interactive reverse shell
 
 Because `socat` is a legitimate administration and networking utility, its presence alone was not treated as malicious. Its significance came from the surrounding compromise context and execution sequence.
 
-> **Evidence:** `auditd` / process evidence showing `socat` execution associated with the intrusion.
+![Socat reverse shell activity](evidence/01-initial-access/04-socat-reverse-shell.png)
+
+*Figure 4 — Host evidence showing `socat` activity associated with establishment of an interactive reverse shell.*
 
 ### Privilege Escalation
 
@@ -197,7 +205,9 @@ Root-level session
 
 The investigation treated the exposed key as credential material rather than a software-exploitation vulnerability. No evidence was identified showing that the attacker required exploitation of a kernel or application vulnerability to obtain root privileges.
 
-> **Evidence:** SSH key artifact and root-level shell/history activity.
+![Root access and internal reconnaissance](evidence/01-initial-access/05-root-and-reconnaissance.png)
+
+*Figure 5 — Root-level shell activity following credential discovery, with subsequent reconnaissance of the internal environment.*
 
 ### Internal Reconnaissance
 
@@ -257,7 +267,9 @@ This represented a durable foothold independent of the original WordPress access
 
 Persistence through systemd is especially significant because service execution may occur with elevated privileges and survive user logoff or system restart.
 
-> **Evidence:** Malicious systemd service configuration and associated executable artifact.
+![Malicious systemd persistence](evidence/01-initial-access/06-systemd-persistence.png)
+
+*Figure 6 — Malicious systemd configuration establishing persistent execution of attacker-controlled tooling.*
 
 ### Stage 1 Findings
 
