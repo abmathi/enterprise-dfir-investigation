@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-This project documents a multi-host digital forensics and incident response investigation conducted in a simulated enterprise environment. The investigation began with the compromise of an internet-facing WordPress server and followed the attacker’s activity across multiple Linux and Windows systems.
+This project documents a multi-host digital forensics and incident response investigation conducted in a simulated enterprise environment. The investigation began with the compromise of an internet-facing WordPress server and followed the attacker's activity across multiple Linux and Windows systems.
 
 Evidence from web logs, Linux audit records, Windows forensic artifacts, PowerShell transcripts, and volatile memory was correlated to reconstruct the intrusion from initial access through privilege escalation, credential access, persistence, and lateral movement.
 
@@ -81,9 +81,29 @@ The investigation followed an evidence-first workflow:
 
 This approach was used throughout the investigation to avoid treating scenario context or assumptions as independently verified forensic findings.
 
-## Environment and Evidence Sources
-
 ## Attack Overview
+
+The intrusion progressed from compromise of an internet-facing Linux web application into the internal Windows environment. After establishing command execution and persistent root-level access on `DeceptiPot`, the attacker used compromised credentials to access `SRV-IT-QA`, performed credential dumping, and continued lateral movement with PsExec.
+
+Volatile-memory analysis on `SRV-DMZ-GW` later identified suspicious DLL execution, process injection, Meterpreter-like shellcode, and an established RDP connection leading deeper into the environment. The final preserved evidence showed access to `SRV-CRM-01`, a system containing sensitive CRM-related data.
+
+```text
+Internet
+   ↓
+DeceptiPot
+WordPress → Webshell → Reverse Shell → Root → Persistence
+   ↓
+SRV-IT-QA
+RDP → Masquerading → LSASS Dump → PsExec
+   ↓
+SRV-DMZ-GW
+DLL Execution → Process Injection → Meterpreter → RDP
+   ↓
+SRV-CRM-01
+RDP → CRM Data Access
+```
+
+The sections below examine each stage using the preserved forensic evidence.
 
 ## Stage 1 — Initial Access and Linux Compromise
 
@@ -119,8 +139,6 @@ Web-server evidence showed interaction with WordPress functionality associated w
 
 This represented the transition from compromised application credentials to arbitrary command execution on the underlying host.
 
-The resulting attack path was:
-
 ```text
 Compromised WordPress administrator
         ↓
@@ -144,8 +162,6 @@ One of the strongest findings in the Linux investigation was the ability to corr
 Suspicious HTTP requests contained attacker-controlled command input. Corresponding `auditd` records showed execution of the associated operating-system commands.
 
 This provided independent evidence that the malicious web activity was not limited to requests reaching the application; the commands were executed by the host.
-
-The correlation can be summarized as:
 
 ```text
 Malicious HTTP request
@@ -191,8 +207,6 @@ The investigation identified an exposed SSH private key that could be used to ob
 
 Subsequent shell artifacts indicated that the attacker transitioned into a root-level context. This expanded the compromise from application-level and user-level execution to full administrative control of the Linux host.
 
-The evidence supported the following progression:
-
 ```text
 Initial shell
       ↓
@@ -227,31 +241,19 @@ Identification of internal targets
 
 The reconnaissance was significant because the following stages of the investigation involved Windows systems that were not directly internet-facing.
 
-> **Evidence:** Root shell or command-history artifacts showing internal reconnaissance activity.
-
 ### Payload Retrieval
 
 The attacker retrieved additional tooling after establishing elevated access.
 
 Artifacts indicated that external content was downloaded to the compromised system for use in later stages of the intrusion.
 
-Rather than treating the download alone as proof of execution, the investigation separated:
-
-- payload retrieval
-- payload placement
-- subsequent execution evidence
-
-where those stages could be independently established.
-
-> **Evidence:** Shell or filesystem artifacts showing retrieval of attacker tooling.
+The investigation separated payload retrieval and placement from later execution rather than assuming that the presence of a downloaded file proved it had run.
 
 ### Linux Persistence
 
 Persistent access was established through a malicious systemd service designed to resemble a legitimate Linux kernel worker.
 
 The service referenced an attacker-controlled executable and was configured so the malicious program could launch automatically with the system.
-
-The persistence mechanism used naming intended to blend into normal Linux activity:
 
 ```text
 systemd
@@ -303,8 +305,6 @@ DECEPT\emily.ross
 
 The activity was consistent with the attacker using credentials obtained during the earlier stages of the intrusion to move from the compromised Linux system into the Windows environment.
 
-This represented an important transition in the attack:
-
 ```text
 Linux foothold
       ↓
@@ -333,16 +333,6 @@ Scheduled tasks are legitimate Windows administration mechanisms, but they can a
 
 The significance of the activity came from the relationship between the scheduled task, the affected user, and the executable it launched rather than from the use of Task Scheduler alone.
 
-```text
-Compromised account
-       ↓
-Scheduled task
-       ↓
-Attacker-controlled executable
-       ↓
-Automated execution
-```
-
 ### Executable Masquerading
 
 One of the key artifacts identified on the system was:
@@ -365,8 +355,6 @@ The mismatch between the visible filename and the executable's embedded metadata
 
 This is consistent with executable masquerading, where an attacker attempts to reduce suspicion by assigning malicious or unauthorized tooling a familiar name.
 
-The finding illustrates why executable names alone should not be considered sufficient evidence of software identity.
-
 ![Masqueraded executable metadata](evidence/02-credential-access/02-masqueraded-binary.png)
 
 *Figure 8 — The file named `Coreinfo64.exe` contained embedded metadata identifying it as ApacheBench (`ab.exe`), indicating executable masquerading.*
@@ -379,26 +367,7 @@ Windows Prefetch artifacts were therefore examined to determine whether the masq
 
 Prefetch evidence confirmed execution of the file on `SRV-IT-QA`.
 
-This allowed the investigation to distinguish between:
-
-```text
-File exists on disk
-        ↓
-        X
-Does not automatically prove execution
-```
-
-and:
-
-```text
-File exists on disk
-        +
-Prefetch execution artifact
-        ↓
-Execution supported by forensic evidence
-```
-
-The Prefetch artifact therefore provided independent validation that the masqueraded executable had been launched.
+This provided independent validation that the suspicious file was not merely present on disk but had executed.
 
 ### PowerShell Activity
 
@@ -414,8 +383,6 @@ The PowerShell evidence showed use of ProcDump against the LSASS process.
 
 LSASS maintains sensitive authentication material for active Windows logon sessions. Accessing or dumping its memory can expose credentials or credential-derived material that may enable further lateral movement.
 
-The observed attack sequence was consistent with:
-
 ```text
 PowerShell
     ↓
@@ -430,8 +397,6 @@ Credential-access opportunity
 
 The presence of the ProcDump command and associated dump activity supported the conclusion that credential access was a primary objective on `SRV-IT-QA`.
 
-This stage was especially significant because the following activity involved movement to another Windows system, indicating that the attacker continued expanding access within the environment.
-
 ![LSASS credential dumping with ProcDump](evidence/02-credential-access/03-lsass-credential-dumping.png)
 
 *Figure 9 — PowerShell transcript evidence showing ProcDump targeting `lsass.exe`, consistent with credential-dumping activity.*
@@ -440,21 +405,13 @@ This stage was especially significant because the following activity involved mo
 
 Artifacts indicated that the resulting credential dump was subsequently accessed or retrieved for further use.
 
-The investigation treated the creation and handling of the dump as separate actions:
-
-1. ProcDump was used to capture LSASS memory.
-2. A dump artifact was created.
-3. The artifact was subsequently handled by the attacker.
-
-Separating these events helped preserve the distinction between the credential-dumping technique itself and later attacker use of the resulting data.
+The investigation treated creation of the LSASS dump and subsequent handling of the resulting artifact as separate actions rather than assuming how the recovered credential material was ultimately used.
 
 ### PsExec Lateral Movement
 
 Evidence later showed use of PsExec, a legitimate Sysinternals remote-administration utility commonly used to execute processes on remote Windows systems.
 
 Within the context of the ongoing compromise, PsExec activity represented another lateral-movement mechanism.
-
-The attack progression on `SRV-IT-QA` can therefore be summarized as:
 
 ```text
 Stolen domain credentials
@@ -468,8 +425,6 @@ Masqueraded executable
 PowerShell activity
         ↓
 LSASS credential dumping
-        ↓
-Additional credential access
         ↓
 PsExec
         ↓
@@ -492,8 +447,7 @@ The `SRV-IT-QA` investigation established the following findings:
 4. Windows Prefetch artifacts independently confirmed that the masqueraded executable executed.
 5. PowerShell transcript evidence showed ProcDump targeting `lsass.exe`.
 6. LSASS memory was dumped, creating an opportunity for additional credential theft.
-7. The resulting credential material supported continued movement through the Windows environment.
-8. PsExec activity provided evidence of lateral movement toward `SRV-DMZ-GW`.
+7. PsExec activity provided evidence of lateral movement toward `SRV-DMZ-GW`.
 
 By the end of Stage 2, the intrusion had progressed from the initial Linux foothold into the Windows domain environment, where the attacker obtained additional credential material and established the access required to continue moving between internal systems.
 
@@ -508,8 +462,6 @@ This stage was particularly important because it exposed evidence of in-memory e
 ### Process Tree Reconstruction
 
 Initial process analysis revealed a suspicious execution chain originating from PsExec activity.
-
-The observed sequence included:
 
 ```text
 PSEXESVC.exe
@@ -531,8 +483,6 @@ cmd.exe
 powershell.exe
 ```
 
-The relationship between these processes provided a high-level view of how attacker activity progressed after lateral movement onto the system.
-
 Rather than treating each executable independently, the investigation used parent-child process relationships to reconstruct the likely execution sequence.
 
 ![Suspicious process tree reconstructed from memory](evidence/03-memory-forensics/01-process-tree.png)
@@ -547,11 +497,9 @@ Within the process tree, `rundll32.exe` was observed loading:
 MicrosoftUpdate.dll
 ```
 
-The DLL name was designed to resemble legitimate Microsoft update-related software.
+The DLL name resembled legitimate Microsoft update-related software.
 
 Because `rundll32.exe` is a legitimate Windows utility capable of executing exported functions from DLL files, its use is not inherently malicious. In this case, its significance came from its placement inside the broader suspicious process chain.
-
-The sequence was consistent with attacker-controlled DLL execution following PsExec-based access.
 
 ### Masqueraded Update Payloads
 
@@ -562,9 +510,7 @@ windows-update.exe
 security-update.exe
 ```
 
-These names were designed to appear consistent with legitimate operating-system maintenance activity.
-
-Within the context of the existing intrusion, the naming pattern was treated as evidence of masquerading rather than as proof that the files were legitimate Microsoft components.
+Within the context of the existing intrusion, the naming pattern was treated as evidence of masquerading rather than proof that the files were legitimate Microsoft components.
 
 This reinforced a recurring theme from Stage 2: filenames and visible process names cannot be trusted as sole indicators of software identity.
 
@@ -582,22 +528,6 @@ fc 55 57 56 48 ...
 
 The presence of executable memory inside `notepad.exe`, combined with the surrounding attack chain, was consistent with process injection.
 
-This allowed the investigation to distinguish between:
-
-```text
-Legitimate notepad.exe process
-```
-
-and:
-
-```text
-Legitimate process
-      +
-Injected executable memory
-      ↓
-Potential attacker-controlled execution context
-```
-
 ![Injected executable memory in notepad.exe](evidence/03-memory-forensics/02-process-injection.png)
 
 *Figure 12 — Volatility `malfind` output identifying suspicious executable memory inside `notepad.exe`, consistent with injected shellcode.*
@@ -609,8 +539,6 @@ The suspicious memory content was consistent with Meterpreter-related shellcode.
 Meterpreter is commonly used as an interactive post-exploitation payload and can operate primarily in memory, reducing reliance on obvious executable files on disk.
 
 The identification of Meterpreter-like shellcode inside `notepad.exe` supported the conclusion that the attacker had established an in-memory post-exploitation session.
-
-This finding was especially important because traditional disk-focused analysis alone could have missed the activity.
 
 ### Command Execution from the Injected Context
 
@@ -632,8 +560,6 @@ The presence of both `cmd.exe` and `powershell.exe` under the suspicious process
 
 Volatility network analysis identified an established RDP connection associated with `powershell.exe`.
 
-The observed connection was:
-
 ```text
 172.16.8.15:49750
         →
@@ -648,8 +574,6 @@ PID 464
 ```
 
 Because TCP/3389 is associated with Remote Desktop Protocol, the connection indicated movement from `SRV-DMZ-GW` toward another internal Windows host.
-
-This provided an important link between the memory-resident activity and the next stage of the intrusion.
 
 ![Established RDP connection identified in memory](evidence/03-memory-forensics/03-rdp-lateral-movement.png)
 
@@ -720,8 +644,6 @@ The source of the connection was:
 
 This indicated continued movement through the Windows environment using valid domain credentials.
 
-The connection represented another step in the attacker's lateral movement:
-
 ```text
 Previously compromised Windows host
         ↓
@@ -742,14 +664,7 @@ As with the earlier RDP activity, the use of legitimate authentication mechanism
 
 Forensic examination of the system identified CRM-related data artifacts containing customer or business information.
 
-The presence of these artifacts was significant because earlier stages of the intrusion had already demonstrated:
-
-- credential access,
-- lateral movement,
-- internal reconnaissance,
-- and post-compromise execution.
-
-The CRM artifacts therefore represented data of potential value to an attacker operating inside the environment.
+The presence of these artifacts was significant because earlier stages of the intrusion had already demonstrated credential access, lateral movement, internal reconnaissance, and post-compromise execution.
 
 The preserved evidence supports the conclusion that the attacker reached a system containing sensitive CRM data.
 
@@ -771,11 +686,11 @@ The retained artifacts support:
 
 The available evidence does **not** provide enough independent support to make definitive claims about:
 
-- the exact files collected,
-- the full contents of any archive,
-- successful external exfiltration,
-- deletion of Windows event logs,
-- or deletion of Volume Shadow Copies.
+- the exact files collected
+- the full contents of any archive
+- successful external exfiltration
+- deletion of Windows event logs
+- deletion of Volume Shadow Copies
 
 Those actions are therefore not presented as confirmed findings in this case study.
 
@@ -793,8 +708,6 @@ This final stage demonstrates an important forensic principle: conclusions shoul
 ## Cross-Host Attack Timeline
 
 The investigation revealed a multi-stage intrusion that moved from an internet-facing Linux application into the internal Windows environment.
-
-The timeline below summarizes the major attacker actions established by the preserved evidence.
 
 | Phase | Host | Activity | Evidence |
 | --- | --- | --- | --- |
@@ -820,161 +733,31 @@ The timeline below summarizes the major attacker actions established by the pres
 | Remote Access | SRV-CRM-01 | `DECEPT\matthew.collins` was used for RDP access | Preserved RDP evidence |
 | Data Access | SRV-CRM-01 | CRM-related business data artifacts were identified on the compromised system | Disk-forensic evidence |
 
-### Attack Progression
-
-At a high level, the intrusion progressed as follows:
-
-```text
-Internet
-   │
-   ▼
-DeceptiPot
-WordPress compromise
-   │
-   ├─ PHP webshell
-   ├─ host command execution
-   ├─ socat reverse shell
-   ├─ root access
-   └─ systemd persistence
-   │
-   ▼
-SRV-IT-QA
-RDP with compromised credentials
-   │
-   ├─ scheduled-task abuse
-   ├─ executable masquerading
-   ├─ LSASS credential dumping
-   └─ PsExec
-   │
-   ▼
-SRV-DMZ-GW
-Memory-resident post-exploitation
-   │
-   ├─ rundll32 / DLL execution
-   ├─ masqueraded update payloads
-   ├─ process injection
-   ├─ Meterpreter-like shellcode
-   └─ outbound RDP
-   │
-   ▼
-SRV-CRM-01
-RDP access
-   │
-   └─ access to CRM-related data
-```
-
 The attack demonstrates how an initial compromise of an internet-facing application can develop into an enterprise-wide incident once the attacker obtains privileged credentials and begins using legitimate administrative mechanisms for lateral movement.
 
 Several stages relied on trusted tools or normal operating-system functionality—including RDP, scheduled tasks, ProcDump, PsExec, `rundll32.exe`, and systemd—which reinforced the importance of analyzing behavior and context rather than relying only on binary names or individual events.
 
 ## Key Findings
 
-The investigation identified a progression from an internet-facing application compromise to credential theft, multi-host lateral movement, memory-resident post-exploitation activity, and access to sensitive internal systems.
+The investigation established several high-confidence findings across the four affected systems:
 
-### 1. Internet-Facing Application Compromise
+1. **An internet-facing WordPress compromise resulted in host-level execution.** Apache and `auditd` evidence connected malicious application activity to commands executed on the Linux server.
 
-The initial Linux host was compromised through the exposed WordPress application. Administrative access was followed by webshell activity that enabled operating-system command execution.
+2. **The attacker established persistent root-level access on the initial host.** Reverse-shell activity, exposed credential material, internal reconnaissance, and malicious systemd persistence were identified.
 
-Apache and `auditd` evidence provided independent visibility into both the application-layer requests and the resulting host-level processes.
+3. **Compromised credentials enabled movement into the Windows environment.** Valid domain accounts were used for RDP access rather than relying exclusively on additional software exploitation.
 
-### 2. Interactive Linux Access and Persistence
+4. **Credential access enabled continued lateral movement.** PowerShell transcript evidence showed ProcDump targeting `lsass.exe`, followed by PsExec activity toward another Windows system.
 
-Following webshell execution, `socat` was used to establish interactive remote access.
+5. **Masquerading was used repeatedly.** Trusted-looking names such as `Coreinfo64.exe`, `MicrosoftUpdate.dll`, and update-themed executables concealed suspicious tooling and execution.
 
-Credential material discovered on the host enabled access to a root-level context, after which the attacker performed internal reconnaissance and established persistence through a malicious systemd service.
+6. **Memory forensics exposed post-exploitation activity not fully represented on disk.** Volatility identified a suspicious process chain, injected executable memory inside `notepad.exe`, Meterpreter-like shellcode, and an established RDP connection.
 
-### 3. Valid Credentials Enabled Windows Lateral Movement
+7. **The attacker reached sensitive internal infrastructure.** Preserved evidence showed RDP access to `SRV-CRM-01` and the presence of CRM-related business data, although the available artifacts did not independently prove the complete exfiltration sequence.
 
-The attacker transitioned from the Linux environment into the Windows domain using legitimate authentication mechanisms and compromised credentials.
+## Investigation Indicators
 
-RDP access to `SRV-IT-QA` demonstrated that valid accounts could be used to move through the environment without requiring exploitation of another externally exposed vulnerability.
-
-### 4. Trusted-Looking Executables Were Used for Masquerading
-
-A file named:
-
-```text
-C:\Users\emily.ross\Documents\Coreinfo64.exe
-```
-
-did not match its embedded metadata.
-
-The executable identified itself internally as:
-
-```text
-FileDescription: ApacheBench command line utility
-ProductName: Apache HTTP Server
-OriginalFilename: ab.exe
-```
-
-Windows Prefetch artifacts subsequently confirmed that the masqueraded executable had run.
-
-### 5. LSASS Was Targeted for Credential Access
-
-PowerShell transcript evidence showed Sysinternals ProcDump being used against `lsass.exe`.
-
-The creation of an LSASS memory dump indicated an attempt to obtain additional Windows authentication material for continued access and lateral movement.
-
-### 6. Legitimate Administrative Tools Supported Lateral Movement
-
-PsExec activity connected the credential-access stage on `SRV-IT-QA` with subsequent execution on `SRV-DMZ-GW`.
-
-The investigation repeatedly showed that legitimate tools and operating-system functionality—including RDP, ProcDump, PsExec, scheduled tasks, `rundll32.exe`, and systemd—can become part of a malicious attack chain when used in the wrong context.
-
-### 7. Memory Forensics Exposed In-Memory Post-Exploitation Activity
-
-Volatile-memory analysis on `SRV-DMZ-GW` identified:
-
-- a suspicious PsExec-related process chain,
-- DLL execution through `rundll32.exe`,
-- masqueraded update-themed payloads,
-- executable memory inside `notepad.exe`,
-- Meterpreter-like shellcode,
-- and continued command execution from the suspicious process context.
-
-These findings demonstrated the value of volatile-memory analysis when attacker activity is not fully represented by persistent files on disk.
-
-### 8. The Compromised Host Was Used for Continued Lateral Movement
-
-Volatility network analysis identified an established connection from:
-
-```text
-172.16.8.15:49750
-```
-
-to:
-
-```text
-172.16.2.9:3389
-```
-
-associated with `powershell.exe`.
-
-The connection provided evidence that `SRV-DMZ-GW` was being used as another staging point for movement deeper into the Windows environment.
-
-### 9. Sensitive CRM Infrastructure Was Reached
-
-The final preserved stage showed RDP access to `SRV-CRM-01` using:
-
-```text
-DECEPT\matthew.collins
-```
-
-from:
-
-```text
-172.16.8.93
-```
-
-Forensic analysis also identified CRM-related business data artifacts on the server.
-
-The preserved evidence established access to the sensitive system but did not independently prove the complete collection and exfiltration sequence described by the training scenario.
-
----
-
-## Indicators of Compromise
-
-The following indicators were identified during the investigation. They are specific to the simulated environment and are included to summarize artifacts that helped connect activity across hosts.
+The following indicators were identified during the investigation. They are specific to the simulated environment and summarize artifacts that helped connect activity across hosts.
 
 ### Accounts
 
@@ -1080,9 +863,9 @@ Stage 4 — SRV-CRM-01
 
 ATT&CK mappings describe observed attacker behavior, not the maliciousness of a tool by itself.
 
-For example, PowerShell, PsExec, `rundll32.exe`, RDP, and scheduled tasks all have legitimate administrative purposes. They map to ATT&CK techniques in this investigation because of how they were used within the reconstructed intrusion chain.
+PowerShell, PsExec, `rundll32.exe`, RDP, and scheduled tasks all have legitimate administrative purposes. They map to ATT&CK techniques in this investigation because of how they were used within the reconstructed intrusion chain.
 
-Similarly, only techniques supported by the retained forensic evidence are included. Behaviors described by the original scenario but not independently established by the preserved artifacts were excluded from the mapping.
+Only techniques supported by the retained forensic evidence are included. Behaviors described by the original scenario but not independently established by the preserved artifacts were excluded from the mapping.
 
 ## Detection Opportunities
 
@@ -1090,153 +873,121 @@ The reconstructed attack chain exposed several opportunities where earlier detec
 
 ### Internet-Facing Authentication Abuse
 
-Repeated WordPress authentication attempts preceded the initial compromise.
-
 Potential detection opportunities include:
 
-- Alerting on unusually high authentication-failure counts from a single source.
-- Detecting rapid authentication attempts against administrative endpoints.
-- Correlating repeated failures with a subsequent successful administrative login.
-- Monitoring unexpected administrative activity immediately following authentication anomalies.
+- unusually high authentication-failure counts from a single source
+- rapid authentication attempts against administrative endpoints
+- repeated failures followed by a successful administrative login
+- unexpected administrative activity immediately following authentication anomalies
 
 A successful login after a concentrated burst of failures should receive greater investigative priority than either event in isolation.
 
 ### Web Application to Operating-System Execution
 
-One of the strongest detection opportunities was the transition from HTTP activity to host command execution.
-
 Potential detections include:
 
-- Web-server processes spawning shell interpreters.
-- PHP or web-service processes launching utilities such as `/bin/sh`, `/bin/bash`, `curl`, `wget`, or networking tools.
-- Correlation between suspicious HTTP parameters and subsequent `execve` activity.
-- Unexpected file modifications within WordPress themes, plugins, or other executable PHP locations.
+- web-server processes spawning shell interpreters
+- PHP or web-service processes launching `/bin/sh`, `/bin/bash`, `curl`, `wget`, or networking utilities
+- suspicious HTTP parameters followed by corresponding `execve` activity
+- unexpected modification of executable WordPress themes or plugins
 
-Cross-source correlation between web logs and endpoint telemetry can distinguish unsuccessful exploitation attempts from commands that actually execute on the host.
+Cross-source correlation between web and endpoint telemetry can distinguish unsuccessful exploitation attempts from commands that actually execute.
 
 ### Reverse-Shell Activity
 
-The use of `socat` provided an opportunity for behavioral detection.
-
 Useful indicators include:
 
-- `socat` executed by a web-service account.
-- `socat` launched shortly after webshell activity.
-- Unexpected outbound connections from an internet-facing application server.
-- Shell or networking utilities spawned by web-server processes.
+- `socat` executed by a web-service account
+- `socat` launched shortly after webshell activity
+- unexpected outbound connections from an internet-facing application server
+- shell or networking utilities spawned by web-server processes
 
 Because `socat` is legitimate software, detection should focus on execution context rather than the binary name alone.
 
 ### Linux Persistence
 
-The malicious systemd service created a durable foothold.
-
 Potential monitoring includes:
 
-- Creation or modification of files under `/etc/systemd/system/`.
-- Execution of `systemctl enable` or daemon reload operations from unusual user contexts.
-- Services referencing binaries from atypical paths.
-- Trusted-looking service names whose executable paths or hashes do not match approved software.
-
-File-integrity monitoring of systemd configuration directories could provide an additional control.
+- creation or modification of files under `/etc/systemd/system/`
+- `systemctl enable` or daemon-reload activity from unusual user contexts
+- services referencing binaries from atypical paths
+- trusted-looking service names whose executable paths or hashes do not match approved software
 
 ### Valid-Account RDP Activity
 
-Compromised credentials enabled the attacker to enter the Windows environment through legitimate RDP.
-
 Detection opportunities include:
 
-- RDP logons from unusual source systems.
-- Accounts authenticating to servers they do not normally access.
-- First-seen source/destination account relationships.
-- Remote logons occurring shortly after credential-access activity elsewhere in the environment.
-- Privileged or sensitive accounts establishing sessions outside expected administrative patterns.
+- RDP logons from unusual source systems
+- accounts authenticating to servers they do not normally access
+- first-seen account/source/destination relationships
+- remote logons shortly after credential-access activity elsewhere
+- sensitive accounts establishing sessions outside expected administrative patterns
 
 Valid authentication should not automatically be treated as benign when the surrounding context is anomalous.
 
 ### Scheduled-Task Abuse
 
-Scheduled tasks provided attacker-controlled execution on `SRV-IT-QA`.
-
 Potential detections include:
 
-- Creation of new scheduled tasks from interactive or scripting processes.
-- Tasks executing programs from user-writable directories.
-- Tasks referencing `%TEMP%`, user profile directories, or other unusual execution locations.
-- Administrative-looking task names whose executable paths do not match known software.
+- new scheduled tasks created from scripting or interactive processes
+- tasks executing programs from user-writable locations
+- tasks referencing `%TEMP%` or user profile directories
+- administrative-looking task names whose executable paths do not match known software
 
 ### Executable Masquerading
 
-`Coreinfo64.exe` demonstrated that a trusted-looking filename may not represent the actual program.
-
 Possible detection approaches include:
 
-- Comparing executable filenames against embedded metadata.
-- Validating digital signatures for trusted administrative utilities.
-- Monitoring known utility names executing from unexpected directories.
-- Comparing hashes against approved software inventories.
-
-The combination of a trusted-looking filename, unexpected path, and conflicting metadata should receive increased scrutiny.
+- comparing executable filenames against embedded metadata
+- validating digital signatures for trusted utilities
+- monitoring known utility names from unexpected directories
+- comparing hashes against approved software inventories
 
 ### LSASS Credential Dumping
 
-ProcDump activity against `lsass.exe` was a high-value detection opportunity.
-
 Potential controls include:
 
-- Monitoring processes requesting access to LSASS.
-- Alerting on ProcDump commands referencing `lsass.exe`.
-- Detecting creation of dump files associated with LSASS.
-- Correlating credential-dumping activity with subsequent remote authentication.
-
-Credential-access detections should be treated as potential precursors to lateral movement rather than isolated endpoint alerts.
+- monitoring processes requesting access to LSASS
+- alerting on ProcDump commands referencing `lsass.exe`
+- detecting LSASS-related dump-file creation
+- correlating credential dumping with subsequent remote authentication
 
 ### PsExec Remote Execution
 
-PsExec provided another strong behavioral detection point.
-
 Useful indicators include:
 
-- Creation or execution of `PSEXESVC.exe`.
-- Administrative-share activity followed by remote service creation.
-- PsExec execution from systems or accounts that do not normally use it.
-- PsExec activity immediately following credential dumping.
+- creation or execution of `PSEXESVC.exe`
+- administrative-share activity followed by remote service creation
+- PsExec use from systems or accounts that do not normally require it
+- PsExec activity immediately following credential dumping
 
 ### Rundll32 Abuse
 
-`rundll32.exe` executed the suspicious `MicrosoftUpdate.dll`.
-
 Detection opportunities include:
 
-- `rundll32.exe` loading DLLs from user-writable or unusual locations.
-- Newly created DLLs being executed shortly after arrival.
-- Parent-child relationships inconsistent with normal software behavior.
-- DLL names suggesting trusted vendors without matching signatures or metadata.
+- `rundll32.exe` loading DLLs from unusual or user-writable locations
+- newly created DLLs being executed shortly after arrival
+- unexpected parent-child relationships
+- DLL names suggesting trusted vendors without matching signatures or metadata
 
 ### Process Injection
 
-Memory analysis identified executable injected content inside `notepad.exe`.
-
 Endpoint detection opportunities include:
 
-- Suspicious cross-process memory allocation or modification.
-- Executable memory regions with write and execute permissions.
-- Unexpected processes spawning shells or scripting interpreters.
-- Normally benign applications exhibiting network or command-execution behavior.
+- suspicious cross-process memory allocation or modification
+- executable memory regions with write and execute permissions
+- unexpected processes spawning shells or scripting interpreters
+- normally benign applications exhibiting network or command-execution behavior
 
 A process such as `notepad.exe` spawning `cmd.exe` or PowerShell would be highly unusual in most enterprise environments.
 
 ### Lateral RDP Connections
 
-The established RDP connection identified in memory demonstrated another opportunity for network-based correlation.
-
 Potential detections include:
 
-- New RDP connections between servers that do not normally communicate.
-- Workstation-to-server or server-to-server RDP outside approved administrative paths.
-- RDP activity originating from a host already associated with confirmed malicious behavior.
-
----
+- new RDP connections between servers that do not normally communicate
+- workstation-to-server or server-to-server RDP outside approved administrative paths
+- RDP activity originating from a host already associated with confirmed malicious behavior
 
 ## Remediation Recommendations
 
@@ -1246,37 +997,27 @@ The following controls would reduce the likelihood or impact of the attack paths
 
 - Require multifactor authentication for administrative WordPress accounts where supported.
 - Enforce strong password and lockout policies.
-- Restrict administrative interfaces by network location when operationally feasible.
+- Restrict administrative interfaces by network location where feasible.
 - Keep WordPress core, plugins, themes, and the underlying operating system patched.
 - Monitor changes to executable web content.
 - Remove unnecessary administrative accounts and components.
 
 ### Reduce Web-Server Privileges
 
-Web applications should run with only the privileges required for their function.
-
-Recommended controls include:
-
-- Restricting filesystem write access for the web-service account.
-- Preventing application processes from modifying unnecessary executable content.
-- Limiting access to shell and networking utilities where operationally practical.
-- Applying application isolation and mandatory-access controls where supported.
+- Restrict filesystem write access for the web-service account.
+- Prevent application processes from modifying unnecessary executable content.
+- Limit access to shell and networking utilities where operationally practical.
+- Apply application isolation and mandatory-access controls where supported.
 
 ### Protect Credential Material
-
-The exposed SSH private key and subsequent Windows credential dumping demonstrate the importance of credential protection.
-
-Recommended controls include:
 
 - Remove unused or exposed private keys.
 - Protect private keys with appropriate permissions and passphrases.
 - Rotate credentials after suspected compromise.
 - Avoid storing reusable privileged credentials on internet-facing hosts.
-- Use dedicated administrative accounts rather than normal user identities for privileged operations.
+- Use dedicated administrative accounts for privileged operations.
 
 ### Harden Windows Credential Protection
-
-To reduce credential-dumping risk:
 
 - Enable appropriate Windows protections for LSASS.
 - Limit local administrative access.
@@ -1285,10 +1026,6 @@ To reduce credential-dumping risk:
 - Apply privileged-access management practices to administrative accounts.
 
 ### Restrict Lateral Movement
-
-Network and identity controls should reduce the ability of one compromised system to become a pathway through the environment.
-
-Recommended measures include:
 
 - Segment internet-facing servers from internal administrative networks.
 - Restrict RDP and SMB to approved management paths.
@@ -1302,33 +1039,33 @@ Utilities such as PowerShell, ProcDump, PsExec, `rundll32.exe`, and `socat` shou
 
 Instead:
 
-- Restrict their use to accounts and systems with legitimate operational requirements.
-- Log command-line arguments and process relationships.
-- Use application control where appropriate.
-- Establish behavioral baselines for administrative tooling.
-- Investigate executions that occur from unusual paths or under unusual parent processes.
+- restrict them to accounts and systems with legitimate operational requirements
+- log command-line arguments and process relationships
+- use application control where appropriate
+- establish behavioral baselines for administrative tooling
+- investigate execution from unusual paths or under unusual parent processes
 
 ### Strengthen Persistence Monitoring
 
-Monitor operating-system locations commonly abused for persistence:
+Monitor common persistence locations.
 
 **Linux**
+
 - systemd service directories
 - cron configuration
 - shell startup files
 - SSH `authorized_keys`
 
 **Windows**
+
 - scheduled tasks
 - services
 - startup locations
 - autorun registry keys
 
-Changes in these locations should be correlated with the user, process, and preceding activity that created them.
+Changes should be correlated with the user, process, and preceding activity that created them.
 
 ### Improve Endpoint Visibility
-
-The investigation relied heavily on process, command-line, audit, and memory evidence.
 
 Enterprise endpoints should provide sufficient telemetry to capture:
 
@@ -1350,11 +1087,11 @@ Because some attacker behavior existed primarily in volatile memory, incident-re
 
 Preservation priorities should include:
 
-1. volatile memory,
-2. active network state,
-3. relevant logs,
-4. disk artifacts,
-5. affected credentials and account history.
+1. volatile memory
+2. active network state
+3. relevant logs
+4. disk artifacts
+5. affected credentials and account history
 
 Collecting volatile evidence early can preserve information that may disappear after process termination or system shutdown.
 
@@ -1362,34 +1099,25 @@ Collecting volatile evidence early can preserve information that may disappear a
 
 Because credential access and repeated valid-account usage occurred across multiple stages, remediation should not be limited to individual infected hosts.
 
-A broader response should include:
+A broader response should include identifying potentially exposed credentials, forcing resets where appropriate, revoking active sessions, rotating service-account credentials and keys, reviewing privileged-group membership, and examining authentication activity for additional affected systems.
 
-- identifying potentially exposed credentials,
-- forcing resets where appropriate,
-- revoking active sessions,
-- rotating service-account credentials and keys,
-- reviewing privileged-group membership,
-- and examining authentication activity for additional affected systems.
-
-The investigation demonstrates that removing malware from one endpoint would not be sufficient once an attacker has obtained reusable credentials and established multiple access paths.
+Removing malware from one endpoint would not be sufficient once an attacker has obtained reusable credentials and established multiple access paths.
 
 ## Evidence Limitations
 
 This investigation was reconstructed from a preserved set of forensic artifacts rather than from continuous enterprise telemetry. As a result, some attacker actions could be established with high confidence while others could only be partially supported.
 
-The investigation therefore distinguishes between:
+The investigation distinguishes between:
 
-- **directly observed evidence** — artifacts showing the activity itself,
-- **correlated findings** — conclusions supported by multiple related artifacts,
-- **scenario context** — activity described by the exercise but not independently proven by the preserved evidence.
-
-Several limitations were especially important.
+- **directly observed evidence** — artifacts showing the activity itself
+- **correlated findings** — conclusions supported by multiple related artifacts
+- **scenario context** — activity described by the exercise but not independently proven by the preserved evidence
 
 ### Stage 1
 
 The Linux evidence strongly supported WordPress compromise, webshell activity, host command execution, reverse-shell behavior, root-level access, reconnaissance, and systemd persistence.
 
-However, not every transition in the attack chain had a dedicated artifact preserved in the repository. Where necessary, conclusions were limited to the strongest available evidence.
+Not every transition in the attack chain had a dedicated artifact preserved in the repository. Where necessary, conclusions were limited to the strongest available evidence.
 
 ### Stage 2
 
@@ -1403,7 +1131,7 @@ The investigation did not attempt to reconstruct the exact credential material r
 
 Volatile-memory analysis provided strong evidence of suspicious process ancestry, executable memory inside `notepad.exe`, Meterpreter-like shellcode, and an established RDP connection.
 
-Memory artifacts can be highly transient, and the preserved image represents only the state of the system at the time of acquisition.
+Memory artifacts are transient, and the preserved image represents only the state of the system at the time of acquisition.
 
 ### Stage 4
 
@@ -1411,9 +1139,9 @@ The final stage had the smallest preserved evidence set.
 
 The available artifacts supported:
 
-- RDP access to `SRV-CRM-01`,
-- use of `DECEPT\matthew.collins`,
-- and the presence of CRM-related data artifacts.
+- RDP access to `SRV-CRM-01`
+- use of `DECEPT\matthew.collins`
+- presence of CRM-related data artifacts
 
 The preserved evidence did not independently establish the full collection, archive staging, exfiltration, log-deletion, or shadow-copy-deletion sequence described by the original scenario. Those actions are therefore not presented as confirmed findings.
 
@@ -1423,83 +1151,22 @@ Throughout the project, absence of evidence was not treated as evidence that an 
 
 Where the available artifacts could not support a definitive conclusion, the uncertainty was documented rather than filled with assumptions.
 
----
-
 ## Skills Demonstrated
 
-This investigation required combining host, application, disk, and volatile-memory evidence to reconstruct attacker behavior across Linux and Windows systems.
+**DFIR**  
+Multi-host intrusion reconstruction · attack timeline development · evidence correlation · artifact validation · forensic reporting
 
-### Digital Forensics and Incident Response
+**Linux Investigation**  
+Apache logs · WordPress compromise analysis · Linux `auditd` · reverse-shell analysis · systemd persistence · internal reconnaissance
 
-- Multi-host intrusion reconstruction
-- Attack timeline development
-- Evidence correlation
-- Artifact validation
-- Evidence-scoped reporting
-- IOC identification
-- Incident documentation
+**Windows Forensics**  
+RDP analysis · scheduled tasks · executable metadata · Prefetch · PowerShell transcripts · LSASS credential dumping · PsExec lateral movement
 
-### Linux Investigation
+**Memory Forensics**  
+Volatility · process-tree reconstruction · `malfind` · process injection · shellcode analysis · network reconstruction
 
-- Apache log analysis
-- WordPress compromise investigation
-- Linux `auditd` analysis
-- Web-to-host execution correlation
-- Reverse-shell analysis
-- Shell and history review
-- systemd persistence analysis
-- Internal reconnaissance analysis
+**Threat Analysis**  
+Credential access · persistence · lateral movement · masquerading · dual-use tool analysis · MITRE ATT&CK mapping · behavioral detection
 
-### Windows Forensics
-
-- RDP activity analysis
-- Scheduled-task investigation
-- Executable metadata analysis
-- Masquerading detection
-- Windows Prefetch analysis
-- PowerShell transcript analysis
-- LSASS credential-dumping investigation
-- PsExec lateral-movement analysis
-
-### Memory Forensics
-
-- Volatility
-- Process-tree reconstruction
-- Command-line analysis
-- Suspicious DLL investigation
-- `malfind` analysis
-- Process-injection identification
-- Shellcode analysis
-- Network-connection reconstruction
-
-### Detection and Threat Analysis
-
-- Living-off-the-land and dual-use tool analysis
-- Parent-child process correlation
-- Credential-access detection
-- Lateral-movement analysis
-- Persistence detection
-- MITRE ATT&CK mapping
-- Behavioral detection development
-
-### Tools and Data Sources
-
-- Volatility
-- Linux Audit Framework (`auditd`)
-- Apache access logs
-- Windows forensic artifacts
-- PowerShell transcripts
-- Prefetch
-- Filesystem metadata
-- Process and network memory artifacts
-
-### Core Analytical Principles
-
-The project emphasized several practices that are central to defensive security work:
-
-- correlate evidence across multiple sources,
-- verify execution rather than assuming it from file presence,
-- distinguish legitimate tools from malicious behavior based on context,
-- avoid overstating what telemetry can prove,
-- and preserve uncertainty when the evidence is incomplete.
-
+**Analytical Practice**  
+Evidence-scoped conclusions · cross-source correlation · execution validation · telemetry limitation awareness
