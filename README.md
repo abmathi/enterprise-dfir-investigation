@@ -1025,3 +1025,61 @@ The following indicators were identified during the investigation. They are spec
 These indicators should not be treated as universally malicious outside the context of this investigation.
 
 Utilities such as `socat`, ProcDump, PsExec, PowerShell, and `rundll32.exe` all have legitimate administrative uses. Their significance in this case came from their relationships to compromised accounts, suspicious parent-child process chains, credential access, persistence, and lateral movement.
+
+## MITRE ATT&CK Mapping
+
+The following ATT&CK techniques map directly to behaviors supported by the preserved forensic evidence. The mapping is intentionally limited to techniques that could be reasonably established during the investigation rather than attempting to assign a technique to every observed artifact.
+
+| Tactic | Technique | ID | Evidence from Investigation |
+| --- | --- | --- | --- |
+| Credential Access | Brute Force: Password Guessing | `T1110.001` | Repeated authentication attempts against the internet-facing WordPress administrative interface |
+| Persistence | Server Software Component: Web Shell | `T1505.003` | PHP webshell deployed following WordPress compromise |
+| Execution | Command and Scripting Interpreter: Unix Shell | `T1059.004` | Linux shell commands executed following webshell and reverse-shell access |
+| Discovery | Network Service Discovery | `T1046` | Internal network reconnaissance performed from the compromised Linux host |
+| Persistence / Privilege Escalation | Create or Modify System Process: Systemd Service | `T1543.002` | Malicious systemd service configured for persistent execution |
+| Lateral Movement | Remote Services: Remote Desktop Protocol | `T1021.001` | Compromised domain credentials used for RDP access between internal Windows systems |
+| Persistence / Execution | Scheduled Task/Job: Scheduled Task | `T1053.005` | Windows scheduled-task functionality abused for attacker-controlled execution |
+| Defense Evasion | Masquerading | `T1036` | `Coreinfo64.exe` and update-themed payload names used to resemble legitimate software |
+| Execution | Command and Scripting Interpreter: PowerShell | `T1059.001` | PowerShell used during credential access and post-compromise activity |
+| Credential Access | OS Credential Dumping: LSASS Memory | `T1003.001` | ProcDump used against `lsass.exe` to create a memory dump |
+| Lateral Movement | Remote Services: SMB/Windows Admin Shares | `T1021.002` | PsExec activity supported remote execution and movement between Windows hosts |
+| Defense Evasion / Execution | System Binary Proxy Execution: Rundll32 | `T1218.011` | `rundll32.exe` used to execute `MicrosoftUpdate.dll` |
+| Defense Evasion / Privilege Escalation | Process Injection | `T1055` | Executable memory and Meterpreter-like shellcode identified inside `notepad.exe` |
+
+### ATT&CK Coverage by Investigation Stage
+
+```text
+Stage 1 — DeceptiPot
+├── T1110.001  Password Guessing
+├── T1505.003  Web Shell
+├── T1059.004  Unix Shell
+├── T1046      Network Service Discovery
+└── T1543.002  Systemd Service
+
+Stage 2 — SRV-IT-QA
+├── T1021.001  Remote Desktop Protocol
+├── T1053.005  Scheduled Task
+├── T1036      Masquerading
+├── T1059.001  PowerShell
+├── T1003.001  LSASS Memory
+└── T1021.002  SMB / Windows Admin Shares
+
+Stage 3 — SRV-DMZ-GW
+├── T1021.002  SMB / Windows Admin Shares
+├── T1218.011  Rundll32
+├── T1036      Masquerading
+├── T1055      Process Injection
+├── T1059.001  PowerShell
+└── T1021.001  Remote Desktop Protocol
+
+Stage 4 — SRV-CRM-01
+└── T1021.001  Remote Desktop Protocol
+```
+
+### Mapping Notes
+
+ATT&CK mappings describe observed attacker behavior, not the maliciousness of a tool by itself.
+
+For example, PowerShell, PsExec, `rundll32.exe`, RDP, and scheduled tasks all have legitimate administrative purposes. They map to ATT&CK techniques in this investigation because of how they were used within the reconstructed intrusion chain.
+
+Similarly, only techniques supported by the retained forensic evidence are included. Behaviors described by the original scenario but not independently established by the preserved artifacts were excluded from the mapping.
