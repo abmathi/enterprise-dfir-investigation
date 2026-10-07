@@ -734,6 +734,10 @@ SRV-CRM-01
 
 As with the earlier RDP activity, the use of legitimate authentication mechanisms meant that the connection could resemble normal administrative behavior without the surrounding incident context.
 
+![RDP access to SRV-CRM-01](evidence/04-crm-compromise/01-rdp-access.png)
+
+*Figure 14 — Evidence of RDP access to `SRV-CRM-01` using the domain account `DECEPT\matthew.collins` from internal host `172.16.8.93`.*
+
 ### CRM Data Artifacts
 
 Forensic examination of the system identified CRM-related data artifacts containing customer or business information.
@@ -748,6 +752,10 @@ The presence of these artifacts was significant because earlier stages of the in
 The CRM artifacts therefore represented data of potential value to an attacker operating inside the environment.
 
 The preserved evidence supports the conclusion that the attacker reached a system containing sensitive CRM data.
+
+![CRM data artifacts on the compromised server](evidence/04-crm-compromise/02-crm-data-artifacts.png)
+
+*Figure 15 — Forensic evidence showing CRM-related data artifacts present on `SRV-CRM-01`, establishing access to potentially sensitive business information.*
 
 ### Evidence Limitations
 
