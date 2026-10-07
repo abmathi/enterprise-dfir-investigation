@@ -499,12 +499,192 @@ By the end of Stage 2, the intrusion had progressed from the initial Linux footh
 
 ## Stage 3 — Memory Forensics and Continued Lateral Movement
 
+The investigation then moved to `SRV-DMZ-GW`, where volatile memory analysis was used to reconstruct attacker activity that was not fully explained by disk artifacts alone.
+
+A memory image from the system was analyzed with Volatility to examine process relationships, command-line activity, loaded modules, suspicious executable memory, and active network connections.
+
+This stage was particularly important because it exposed evidence of in-memory execution, process injection, and continued lateral movement.
+
 ### Process Tree Reconstruction
+
+Initial process analysis revealed a suspicious execution chain originating from PsExec activity.
+
+The observed sequence included:
+
+```text
+PSEXESVC.exe
+      ↓
+cmd.exe
+      ↓
+rundll32.exe
+      ↓
+MicrosoftUpdate.dll
+      ↓
+windows-update.exe
+      ↓
+security-update.exe
+      ↓
+notepad.exe
+      ↓
+cmd.exe
+      ↓
+powershell.exe
+```
+
+The relationship between these processes provided a high-level view of how attacker activity progressed after lateral movement onto the system.
+
+Rather than treating each executable independently, the investigation used parent-child process relationships to reconstruct the likely execution sequence.
+
 ### Suspicious DLL Execution
+
+Within the process tree, `rundll32.exe` was observed loading:
+
+```text
+MicrosoftUpdate.dll
+```
+
+The DLL name was designed to resemble legitimate Microsoft update-related software.
+
+Because `rundll32.exe` is a legitimate Windows utility capable of executing exported functions from DLL files, its use is not inherently malicious. In this case, its significance came from its placement inside the broader suspicious process chain.
+
+The sequence was consistent with attacker-controlled DLL execution following PsExec-based access.
+
 ### Masqueraded Update Payloads
+
+Additional executables observed in memory used update-themed filenames:
+
+```text
+windows-update.exe
+security-update.exe
+```
+
+These names were designed to appear consistent with legitimate operating-system maintenance activity.
+
+Within the context of the existing intrusion, the naming pattern was treated as evidence of masquerading rather than as proof that the files were legitimate Microsoft components.
+
+This reinforced a recurring theme from Stage 2: filenames and visible process names cannot be trusted as sole indicators of software identity.
+
 ### Process Injection
+
+Memory analysis of `notepad.exe` identified suspicious executable memory that did not match the expected behavior of a normal text editor process.
+
+Volatility's `malfind` analysis identified memory regions with permissions consistent with executable injected code.
+
+The suspicious region included a shellcode-like byte sequence beginning with:
+
+```text
+fc 55 57 56 48 ...
+```
+
+The presence of executable memory inside `notepad.exe`, combined with the surrounding attack chain, was consistent with process injection.
+
+This allowed the investigation to distinguish between:
+
+```text
+Legitimate notepad.exe process
+```
+
+and:
+
+```text
+Legitimate process
+      +
+Injected executable memory
+      ↓
+Potential attacker-controlled execution context
+```
+
 ### Meterpreter Identification
-### RDP Connection Analysis
+
+The suspicious memory content was consistent with Meterpreter-related shellcode.
+
+Meterpreter is commonly used as an interactive post-exploitation payload and can operate primarily in memory, reducing reliance on obvious executable files on disk.
+
+The identification of Meterpreter-like shellcode inside `notepad.exe` supported the conclusion that the attacker had established an in-memory post-exploitation session.
+
+This finding was especially important because traditional disk-focused analysis alone could have missed the activity.
+
+### Command Execution from the Injected Context
+
+The process chain following `notepad.exe` included:
+
+```text
+notepad.exe
+    ↓
+cmd.exe
+    ↓
+powershell.exe
+```
+
+This suggested that the injected process context was being used to launch additional command-line activity.
+
+The presence of both `cmd.exe` and `powershell.exe` under the suspicious process chain provided additional evidence that the compromised process was being used interactively rather than simply containing dormant injected code.
+
+### Network Connection Analysis
+
+Volatility network analysis identified an established RDP connection associated with `powershell.exe`.
+
+The observed connection was:
+
+```text
+172.16.8.15:49750
+        →
+172.16.2.9:3389
+```
+
+The connection was in an established state and associated with:
+
+```text
+powershell.exe
+PID 464
+```
+
+Because TCP/3389 is associated with Remote Desktop Protocol, the connection indicated movement from `SRV-DMZ-GW` toward another internal Windows host.
+
+This provided an important link between the memory-resident activity and the next stage of the intrusion.
+
+### Continued Lateral Movement
+
+Combining process and network evidence produced the following progression:
+
+```text
+PsExec access
+      ↓
+PSEXESVC.exe
+      ↓
+rundll32.exe
+      ↓
+Suspicious DLL execution
+      ↓
+Masqueraded update payloads
+      ↓
+notepad.exe
+      ↓
+Injected Meterpreter-like shellcode
+      ↓
+cmd.exe / powershell.exe
+      ↓
+Established RDP connection
+      ↓
+Movement toward another internal host
+```
+
+The memory evidence therefore demonstrated that the attacker was not simply present on `SRV-DMZ-GW`; the system was actively being used as another point of access for continued movement through the environment.
+
+### Stage 3 Findings
+
+The volatile-memory investigation established the following findings:
+
+1. PsExec-related execution was followed by a suspicious chain of Windows processes.
+2. `rundll32.exe` was used to load a DLL named `MicrosoftUpdate.dll`.
+3. Additional binaries used update-themed filenames consistent with masquerading.
+4. `notepad.exe` contained suspicious executable memory identified through Volatility `malfind`.
+5. The injected memory contained shellcode consistent with Meterpreter-related activity.
+6. The suspicious `notepad.exe` process spawned additional command-line activity.
+7. `powershell.exe` maintained an established RDP connection to another internal host.
+8. The combined memory and network evidence supported continued lateral movement from `SRV-DMZ-GW`.
+
+By the end of Stage 3, memory forensics had exposed attacker activity that would have been difficult to establish through disk artifacts alone, including process injection, in-memory payload execution, and the network connection used to continue the intrusion.
 
 ## Stage 4 — CRM Server Compromise
 
