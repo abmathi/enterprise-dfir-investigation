@@ -289,12 +289,197 @@ By the end of this stage, the attacker had progressed from an internet-facing we
 
 ## Stage 2 — Credential Access and Windows Lateral Movement
 
+Following compromise of the internet-facing Linux host, the investigation shifted to `SRV-IT-QA`, a Windows system inside the enterprise environment.
+
+Forensic artifacts indicated that previously obtained domain credentials were used to access the server through Remote Desktop Protocol (RDP). Subsequent activity included scheduled-task abuse, execution of a masqueraded binary, credential dumping from LSASS, and PsExec-based lateral movement.
+
 ### RDP Access with Stolen Credentials
+
+Evidence on `SRV-IT-QA` showed an interactive RDP session associated with the domain account:
+
+```text
+DECEPT\emily.ross
+```
+
+The activity was consistent with the attacker using credentials obtained during the earlier stages of the intrusion to move from the compromised Linux system into the Windows environment.
+
+This represented an important transition in the attack:
+
+```text
+Linux foothold
+      ↓
+Credential access
+      ↓
+Valid domain account
+      ↓
+RDP authentication
+      ↓
+SRV-IT-QA
+```
+
+Rather than exploiting a remote software vulnerability, the attacker was able to access the Windows server using legitimate authentication mechanisms and compromised credentials.
+
 ### Scheduled Task Abuse
+
+Investigation of activity on `SRV-IT-QA` identified suspicious use of Windows scheduled tasks.
+
+The attacker manipulated scheduled execution in order to launch a binary from the compromised user environment.
+
+Scheduled tasks are legitimate Windows administration mechanisms, but they can also provide attackers with a reliable method of executing code automatically or under a desired security context.
+
+The significance of the activity came from the relationship between the scheduled task, the affected user, and the executable it launched rather than from the use of Task Scheduler alone.
+
+```text
+Compromised account
+       ↓
+Scheduled task
+       ↓
+Attacker-controlled executable
+       ↓
+Automated execution
+```
+
 ### Executable Masquerading
-### Execution Validation
+
+One of the key artifacts identified on the system was:
+
+```text
+C:\Users\emily.ross\Documents\Coreinfo64.exe
+```
+
+The filename suggested that the executable was the legitimate Microsoft Sysinternals `Coreinfo64.exe` utility.
+
+Inspection of the executable metadata, however, revealed conflicting information:
+
+```text
+FileDescription: ApacheBench command line utility
+ProductName: Apache HTTP Server
+OriginalFilename: ab.exe
+```
+
+The mismatch between the visible filename and the executable's embedded metadata indicated that the file had been renamed to resemble a trusted administrative utility.
+
+This is consistent with executable masquerading, where an attacker attempts to reduce suspicion by assigning malicious or unauthorized tooling a familiar name.
+
+The finding illustrates why executable names alone should not be considered sufficient evidence of software identity.
+
+### Execution Validation with Prefetch
+
+The presence of a suspicious executable on disk did not by itself prove that the program had executed.
+
+Windows Prefetch artifacts were therefore examined to determine whether the masqueraded `Coreinfo64.exe` binary had actually run.
+
+Prefetch evidence confirmed execution of the file on `SRV-IT-QA`.
+
+This allowed the investigation to distinguish between:
+
+```text
+File exists on disk
+        ↓
+        X
+Does not automatically prove execution
+```
+
+and:
+
+```text
+File exists on disk
+        +
+Prefetch execution artifact
+        ↓
+Execution supported by forensic evidence
+```
+
+The Prefetch artifact therefore provided independent validation that the masqueraded executable had been launched.
+
+### PowerShell Activity
+
+PowerShell transcript evidence revealed additional attacker activity following execution on the server.
+
+The transcripts provided command-level visibility that could not be obtained from filenames alone and showed the attacker interacting directly with the Windows environment.
+
+Of particular importance was activity involving Sysinternals ProcDump and the Local Security Authority Subsystem Service (`lsass.exe`).
+
 ### LSASS Credential Dumping
+
+The PowerShell evidence showed use of ProcDump against the LSASS process.
+
+LSASS maintains sensitive authentication material for active Windows logon sessions. Accessing or dumping its memory can expose credentials or credential-derived material that may enable further lateral movement.
+
+The observed attack sequence was consistent with:
+
+```text
+PowerShell
+    ↓
+ProcDump
+    ↓
+lsass.exe
+    ↓
+LSASS memory dump
+    ↓
+Credential-access opportunity
+```
+
+The presence of the ProcDump command and associated dump activity supported the conclusion that credential access was a primary objective on `SRV-IT-QA`.
+
+This stage was especially significant because the following activity involved movement to another Windows system, indicating that the attacker continued expanding access within the environment.
+
+### Credential Dump Retrieval
+
+Artifacts indicated that the resulting credential dump was subsequently accessed or retrieved for further use.
+
+The investigation treated the creation and handling of the dump as separate actions:
+
+1. ProcDump was used to capture LSASS memory.
+2. A dump artifact was created.
+3. The artifact was subsequently handled by the attacker.
+
+Separating these events helped preserve the distinction between the credential-dumping technique itself and later attacker use of the resulting data.
+
 ### PsExec Lateral Movement
+
+Evidence later showed use of PsExec, a legitimate Sysinternals remote-administration utility commonly used to execute processes on remote Windows systems.
+
+Within the context of the ongoing compromise, PsExec activity represented another lateral-movement mechanism.
+
+The attack progression on `SRV-IT-QA` can therefore be summarized as:
+
+```text
+Stolen domain credentials
+        ↓
+RDP to SRV-IT-QA
+        ↓
+Scheduled-task abuse
+        ↓
+Masqueraded executable
+        ↓
+PowerShell activity
+        ↓
+LSASS credential dumping
+        ↓
+Additional credential access
+        ↓
+PsExec
+        ↓
+Movement toward SRV-DMZ-GW
+```
+
+As with other dual-use administrative tools observed during the investigation, PsExec was not classified as malicious solely because of its presence. Its significance was established through its timing, execution context, and relationship to the larger intrusion sequence.
+
+### Stage 2 Findings
+
+The `SRV-IT-QA` investigation established the following findings:
+
+1. A compromised domain identity was used to obtain interactive RDP access to the Windows server.
+2. Scheduled-task functionality was abused to support attacker-controlled execution.
+3. A binary named `Coreinfo64.exe` contained metadata identifying it as a different application, providing evidence of executable masquerading.
+4. Windows Prefetch artifacts independently confirmed that the masqueraded executable executed.
+5. PowerShell transcript evidence showed ProcDump targeting `lsass.exe`.
+6. LSASS memory was dumped, creating an opportunity for additional credential theft.
+7. The resulting credential material supported continued movement through the Windows environment.
+8. PsExec activity provided evidence of lateral movement toward `SRV-DMZ-GW`.
+
+By the end of Stage 2, the intrusion had progressed from the initial Linux foothold into the Windows domain environment, where the attacker obtained additional credential material and established the access required to continue moving between internal systems.
 
 ## Stage 3 — Memory Forensics and Continued Lateral Movement
 
